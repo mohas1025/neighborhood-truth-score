@@ -1,4 +1,4 @@
-from fastapi import FastAPI
+from fastapi import FastAPI, Query
 from fastapi.middleware.cors import CORSMiddleware
 
 app = FastAPI(
@@ -7,7 +7,6 @@ app = FastAPI(
     version="1.0.0"
 )
 
-# Allow React frontend to talk to this backend
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["http://localhost:5173"],
@@ -23,3 +22,18 @@ def root():
 @app.get("/health")
 def health_check():
     return {"status": "healthy", "version": "1.0.0"}
+
+@app.get("/api/search")
+def search_neighborhood(q: str = Query(..., description="Address, city, or ZIP code")):
+    return {
+        "query": q,
+        "location": q,
+        "score": 72,
+        "summary": "This is a sample result. Real data coming soon.",
+        "categories": {
+            "crime": 65,
+            "traffic": 80,
+            "schools": 75,
+            "parks": 70
+        }
+    }
