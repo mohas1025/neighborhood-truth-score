@@ -3,6 +3,7 @@ import axios from 'axios'
 import { MapContainer, TileLayer, Marker, Popup } from 'react-leaflet'
 import 'leaflet/dist/leaflet.css'
 import L from 'leaflet'
+import MapUpdater from '../components/MapUpdater'
 
 // Fix leaflet marker icon bug
 delete L.Icon.Default.prototype._getIconUrl
@@ -76,7 +77,6 @@ function HomePage() {
         {/* Results */}
         {result && (
           <div className="w-full max-w-4xl">
-            {/* Location Name */}
             <p className="text-gray-400 text-sm mb-4">{result.display_name}</p>
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
@@ -106,6 +106,7 @@ function HomePage() {
                     url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
                     attribution='© OpenStreetMap contributors'
                   />
+                  <MapUpdater lat={result.lat} lon={result.lon} />
                   <Marker position={[result.lat, result.lon]}>
                     <Popup>{result.display_name}</Popup>
                   </Marker>
