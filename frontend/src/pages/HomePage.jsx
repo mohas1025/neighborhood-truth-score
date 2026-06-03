@@ -114,6 +114,16 @@ function HomePage() {
         {/* Error */}
         {error && <p className="text-red-400 mb-6">{error}</p>}
 
+        {/* Loading Spinner */}
+        {loading && (
+          <div className="flex flex-col items-center justify-center py-16">
+            <div className="w-12 h-12 border-4 border-gray-700 border-t-blue-500 rounded-full animate-spin mb-4"></div>
+            <p className="text-gray-400 text-sm">
+              Analyzing neighborhood data...
+            </p>
+          </div>
+        )}
+
         {/* Results */}
         {result && (
           <div className="w-full max-w-4xl">
