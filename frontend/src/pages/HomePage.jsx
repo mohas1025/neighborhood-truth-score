@@ -1,6 +1,16 @@
 import { useState } from 'react'
-import { useNavigate } from 'react-router-dom'
 import axios from 'axios'
+import { MapContainer, TileLayer, Marker, Popup } from 'react-leaflet'
+import 'leaflet/dist/leaflet.css'
+import L from 'leaflet'
+
+// Fix leaflet marker icon bug
+delete L.Icon.Default.prototype._getIconUrl
+L.Icon.Default.mergeOptions({
+  iconRetinaUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon-2x.png',
+  iconUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon.png',
+  shadowUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-shadow.png',
+})
 
 function HomePage() {
   const [query, setQuery] = useState('')
@@ -16,7 +26,7 @@ function HomePage() {
       const response = await axios.get(`http://localhost:8000/api/search?q=${query}`)
       setResult(response.data)
     } catch (err) {
-      setError('Something went wrong. Make sure the backend is running.')
+      setError('Location not found. Try a different address or ZIP code.')
     } finally {
       setLoading(false)
     }
@@ -33,7 +43,7 @@ function HomePage() {
       </header>
 
       {/* Hero Section */}
-      <main className="flex flex-col items-center justify-center px-6 py-20">
+      <main className="flex flex-col items-center px-6 py-16">
         <h2 className="text-4xl font-bold text-center mb-4">
           Know the truth about any neighborhood
         </h2>
@@ -61,23 +71,46 @@ function HomePage() {
         </div>
 
         {/* Error */}
-        {error && (
-          <div className="text-red-400 mb-6">{error}</div>
-        )}
+        {error && <div className="text-red-400 mb-6">{error}</div>}
 
         {/* Results */}
         {result && (
-          <div className="w-full max-w-xl bg-gray-900 rounded-xl p-6 border border-gray-800">
-            <h3 className="text-xl font-bold mb-2">Results for: {result.query}</h3>
-            <div className="text-5xl font-bold text-blue-400 mb-2">{result.score}</div>
-            <p className="text-gray-400 mb-4">{result.summary}</p>
-            <div className="grid grid-cols-2 gap-4">
-              {Object.entries(result.categories).map(([key, value]) => (
-                <div key={key} className="bg-gray-800 rounded-lg p-3">
-                  <div className="text-gray-400 capitalize text-sm">{key}</div>
-                  <div className="text-2xl font-bold text-white">{value}</div>
+          <div className="w-full max-w-4xl">
+            {/* Location Name */}
+            <p className="text-gray-400 text-sm mb-4">{result.display_name}</p>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              {/* Score Card */}
+              <div className="bg-gray-900 rounded-xl p-6 border border-gray-800">
+                <h3 className="text-lg font-semibold mb-4 text-gray-300">Truth Score</h3>
+                <div className="text-7xl font-bold text-blue-400 mb-2">{result.score}</div>
+                <p className="text-gray-400 text-sm mb-6">{result.summary}</p>
+                <div className="grid grid-cols-2 gap-3">
+                  {Object.entries(result.categories).map(([key, value]) => (
+                    <div key={key} className="bg-gray-800 rounded-lg p-3">
+                      <div className="text-gray-400 capitalize text-xs mb-1">{key}</div>
+                      <div className="text-xl font-bold">{value}</div>
+                    </div>
+                  ))}
                 </div>
-              ))}
+              </div>
+
+              {/* Map */}
+              <div className="rounded-xl overflow-hidden border border-gray-800 h-80">
+                <MapContainer
+                  center={[result.lat, result.lon]}
+                  zoom={13}
+                  style={{ height: '100%', width: '100%' }}
+                >
+                  <TileLayer
+                    url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+                    attribution='© OpenStreetMap contributors'
+                  />
+                  <Marker position={[result.lat, result.lon]}>
+                    <Popup>{result.display_name}</Popup>
+                  </Marker>
+                </MapContainer>
+              </div>
             </div>
           </div>
         )}
