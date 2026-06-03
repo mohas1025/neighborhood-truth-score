@@ -1,10 +1,34 @@
-node_modules/
+# Python
 __pycache__/
 *.pyc
+*.pyo
+*.pyd
+.Python
 .env
 .venv
 venv/
-.DS_Store
 *.egg-info/
 dist/
 build/
+
+# Node
+node_modules/
+dist/
+build/
+
+# Mac
+.DS_Store
+
+# VS Code
+.vscode/
+
+# Logs
+*.log
+
+# Database
+*.sqlite3
+
+# Environment variables
+.env
+.env.local
+.env.production
