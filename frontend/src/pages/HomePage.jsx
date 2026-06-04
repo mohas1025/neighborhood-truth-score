@@ -21,6 +21,8 @@ L.Icon.Default.mergeOptions({
   shadowUrl: "https://unpkg.com/leaflet@1.9.4/dist/images/marker-shadow.png",
 });
 
+const API_BASE = "https://neighborhood-truth-score.onrender.com";
+
 const getScoreColor = (score) => {
   if (score >= 75) return "var(--accent)";
   if (score >= 55) return "var(--warn)";
@@ -87,7 +89,7 @@ function HomePage() {
     setResult(null);
     try {
       const response = await axios.get(
-        `http://localhost:8000/api/search?q=${encodeURIComponent(query)}`,
+        `${API_BASE}/api/search?q=${encodeURIComponent(query)}`,
       );
       setResult(response.data);
     } catch (err) {
@@ -163,7 +165,6 @@ function HomePage() {
           livability score.
         </p>
 
-        {/* Search bar */}
         <div
           style={{
             display: "flex",
@@ -266,13 +267,11 @@ function HomePage() {
           className="fade-up"
           style={{ maxWidth: "900px", margin: "0 auto", padding: "40px 24px" }}
         >
-          {/* Location label */}
           <p
             style={{
               color: "var(--text-tertiary)",
               fontSize: "0.8rem",
               marginBottom: "24px",
-              letterSpacing: "0.02em",
             }}
           >
             {result.display_name}
@@ -370,7 +369,6 @@ function HomePage() {
                 {result.summary}
               </p>
 
-              {/* Category bars */}
               <div
                 style={{
                   display: "flex",
@@ -411,7 +409,6 @@ function HomePage() {
                 ))}
               </div>
 
-              {/* Radar Chart */}
               <div style={{ marginTop: "28px" }}>
                 <p
                   style={{

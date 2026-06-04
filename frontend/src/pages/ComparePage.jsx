@@ -1,6 +1,8 @@
 import { useState } from "react";
 import axios from "axios";
 
+const API_BASE = "https://neighborhood-truth-score.onrender.com";
+
 const getScoreColor = (score) => {
   if (score >= 75) return "var(--accent)";
   if (score >= 55) return "var(--warn)";
@@ -61,7 +63,7 @@ function ResultCard({ result, isWinner }) {
       style={{
         backgroundColor: "var(--bg-card)",
         border: isWinner
-          ? `2px solid var(--accent)`
+          ? "2px solid var(--accent)"
           : "1px solid var(--border)",
         borderRadius: "16px",
         padding: "28px",
@@ -211,12 +213,8 @@ function ComparePage() {
     setResultB(null);
     try {
       const [resA, resB] = await Promise.all([
-        axios.get(
-          `http://localhost:8000/api/search?q=${encodeURIComponent(queryA)}`,
-        ),
-        axios.get(
-          `http://localhost:8000/api/search?q=${encodeURIComponent(queryB)}`,
-        ),
+        axios.get(`${API_BASE}/api/search?q=${encodeURIComponent(queryA)}`),
+        axios.get(`${API_BASE}/api/search?q=${encodeURIComponent(queryB)}`),
       ]);
       setResultA(resA.data);
       setResultB(resB.data);
@@ -248,7 +246,6 @@ function ComparePage() {
 
   return (
     <div style={{ minHeight: "100vh", backgroundColor: "var(--bg)" }}>
-      {/* Header */}
       <div
         style={{
           backgroundColor: "var(--bg-card)",
@@ -302,7 +299,6 @@ function ComparePage() {
           comparison.
         </p>
 
-        {/* Inputs */}
         <div
           style={{
             display: "flex",
@@ -323,7 +319,6 @@ function ComparePage() {
             onFocus={(e) => (e.target.style.borderColor = "var(--accent)")}
             onBlur={(e) => (e.target.style.borderColor = "var(--border)")}
           />
-
           <div
             style={{
               width: "32px",
@@ -342,7 +337,6 @@ function ComparePage() {
           >
             vs
           </div>
-
           <input
             type="text"
             value={queryB}
@@ -388,7 +382,6 @@ function ComparePage() {
         )}
       </div>
 
-      {/* Loading */}
       {loading && (
         <div
           style={{
@@ -416,13 +409,11 @@ function ComparePage() {
         </div>
       )}
 
-      {/* Results */}
       {resultA && resultB && (
         <div
           className="fade-up"
           style={{ maxWidth: "900px", margin: "0 auto", padding: "48px 24px" }}
         >
-          {/* Verdict banner */}
           <div
             style={{
               backgroundColor: tie
@@ -448,7 +439,6 @@ function ComparePage() {
             </p>
           </div>
 
-          {/* Cards */}
           <div
             style={{
               display: "grid",
