@@ -23,8 +23,8 @@ A full-stack public safety and livability dashboard that scores any US neighborh
 
 | Category | Source | Type |
 |---|---|---|
-| 🔴 Crime | FBI Uniform Crime Report 2024 | Official government data (80+ cities) |
-| 🏫 Schools | OpenStreetMap Overpass API | ✅ Live API — real count within 5km |
+| 🔴 Crime | FBI Uniform Crime Report 2024 | Pre-loaded for 80+ US cities |
+| 🏫 Schools | GreatSchools + NCES quality ratings | Pre-loaded for 80+ US cities |
 | 🌳 Parks | OpenStreetMap Overpass API | ✅ Live API — real count within 5km |
 | 🚗 Traffic | OpenStreetMap Overpass API | ✅ Live API — major roads within 3km |
 | 💰 Livability | US Census Bureau ACS 2022 | ✅ Live API — median income + home value per census tract |
@@ -70,7 +70,7 @@ npm install
 npm run dev
 ```
 
-Open `http://localhost:5173`
+Open [neighborhood-truth-score.vercel.app](https://neighborhood-truth-score.vercel.app)
 
 ---
 
@@ -78,11 +78,11 @@ Open `http://localhost:5173`
 
 | Category | Weight | Source |
 |---|---|---|
-| Crime | 35% | FBI UCR 2024 violent + property rates per 100k |
-| Schools | 20% | OSM school count within 5km |
-| Livability | 20% | Census median income + home value |
-| Traffic | 15% | OSM major road count within 3km |
-| Parks | 10% | OSM park count within 5km |
+| Crime | 35% | FBI UCR 2024 — violent + property rates per 100k |
+| Schools | 20% | GreatSchools + NCES quality ratings |
+| Livability | 20% | US Census median income + home value |
+| Traffic | 15% | OpenStreetMap — major road count within 3km |
+| Parks | 10% | OpenStreetMap — park count within 5km |
 
 🟢 Good (75+) · 🟡 Moderate (55–74) · 🔴 Concerning (below 55)
 
