@@ -1,7 +1,7 @@
 import { useState } from "react";
 import axios from "axios";
 
-const API_BASE = "https://neighborhood-truth-score.onrender.com";
+const API_BASE = "https://neighborhood-truth-score-production.up.railway.app";
 
 const getScoreColor = (score) => {
   if (score >= 75) return "var(--accent)";

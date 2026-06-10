@@ -21,7 +21,7 @@ L.Icon.Default.mergeOptions({
   shadowUrl: "https://unpkg.com/leaflet@1.9.4/dist/images/marker-shadow.png",
 });
 
-const API_BASE = "https://neighborhood-truth-score.onrender.com";
+const API_BASE = "https://neighborhood-truth-score-production.up.railway.app";
 
 const getScoreColor = (score) => {
   if (score >= 75) return "var(--accent)";
