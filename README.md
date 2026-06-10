@@ -70,7 +70,16 @@ npm install
 npm run dev
 ```
 
-Open [neighborhood-truth-score.vercel.app](https://neighborhood-truth-score.vercel.app)
+Open `http://localhost:5173`
+
+---
+
+## 🌍 Deployment
+
+| Service | Platform | Notes |
+|---|---|---|
+| Frontend | Vercel | Auto-deploys on every push to main |
+| Backend | Railway | Auto-deploys on every push to main |
 
 ---
 
