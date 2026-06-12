@@ -437,3 +437,30 @@ def search_neighborhood(q: str = Query(...)):
 
     SEARCH_CACHE[cache_key] = (result, now)
     return result
+
+
+# ── PRE-WARM CACHE ON STARTUP ─────────────────────────────
+PREWARM_CITIES = [
+    "Laguna Beach, CA",
+    "Aliso Viejo, CA",
+    "Irvine, CA",
+    "Newport Beach, CA",
+    "Costa Mesa, CA",
+    "Mission Viejo, CA",
+    "Laguna Niguel, CA",
+]
+
+
+@app.on_event("startup")
+def prewarm_cache():
+    import threading
+
+    def warm():
+        for city in PREWARM_CITIES:
+            try:
+                print(f">>> Pre-warming cache for '{city}'")
+                search_neighborhood(q=city)
+            except Exception as e:
+                print(f"Pre-warm error for '{city}': {e}")
+
+    threading.Thread(target=warm, daemon=True).start()
