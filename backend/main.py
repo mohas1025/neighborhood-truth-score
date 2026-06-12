@@ -3,10 +3,11 @@ from fastapi.middleware.cors import CORSMiddleware
 from dotenv import load_dotenv
 import requests
 import os
+import time
 
 load_dotenv()
 
-app = FastAPI(title="Neighborhood Truth Score API", version="3.2.0")
+app = FastAPI(title="Neighborhood Truth Score API", version="3.3.0")
 
 app.add_middleware(
     CORSMiddleware,
@@ -15,6 +16,10 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# ── CACHE ─────────────────────────────────────────────────
+SEARCH_CACHE = {}
+CACHE_TTL_SECONDS = 24 * 60 * 60  # 24 hours
 
 STATE_MAP = {
     "California": "CA", "Texas": "TX", "New York": "NY",
@@ -50,7 +55,7 @@ FBI_CITY_CRIME_2024 = {
     "anaheim":          (310, 2100),
     "los angeles":      (627, 2200),
     "san francisco":    (640, 5900),
-    "oakland":          (1190,4800),
+    "oakland":          (1190, 4800),
     "san diego":        (370, 2100),
     "san jose":         (280, 2200),
     "sacramento":       (570, 3200),
@@ -90,7 +95,7 @@ FBI_CITY_CRIME_2024 = {
     "arlington":        (430, 3100),
     # New York
     "new york":         (580, 1500),
-    "buffalo":          (1100,4200),
+    "buffalo":          (1100, 4200),
     "yonkers":          (280, 1800),
     # Florida
     "miami":            (700, 3800),
@@ -135,13 +140,13 @@ FBI_CITY_CRIME_2024 = {
     "arlington":        (180, 1500),
     # Ohio
     "columbus":         (590, 3800),
-    "cleveland":        (1300,5200),
+    "cleveland":        (1300, 5200),
     "cincinnati":       (830, 4100),
     # Michigan
-    "detroit":          (2000,5800),
+    "detroit":          (2000, 5800),
     "ann arbor":        (250, 2600),
     # New Jersey
-    "newark":           (1100,3200),
+    "newark":           (1100, 3200),
     "princeton":        (70,   800),
     # Georgia
     "atlanta":          (1200, 5100),
@@ -149,18 +154,16 @@ FBI_CITY_CRIME_2024 = {
     "alpharetta":       (130, 1400),
 }
 
+
 def crime_rates_to_score(violent_per_100k: float, property_per_100k: float) -> int:
     """
     Convert real FBI crime rates to 0-100 safety score.
     National averages 2024: ~380 violent, ~2000 property per 100k.
     """
-    # Violent crime heavily weighted (more dangerous)
-    # 0 violent = 100, 380 (avg) = 65, 1000+ = 20
     violent_score = max(10, min(100, 100 - (violent_per_100k / 14)))
-    # 0 property = 100, 2000 (avg) = 70, 5000+ = 25
     property_score = max(10, min(100, 100 - (property_per_100k / 83)))
-
     return int(violent_score * 0.65 + property_score * 0.35)
+
 
 # State-level fallback crime scores
 STATE_CRIME_FALLBACK = {
@@ -170,86 +173,89 @@ STATE_CRIME_FALLBACK = {
     "AZ": 60, "NV": 58, "OR": 57, "default": 60
 }
 
+
 def get_crime_score(city: str, state_abbr: str) -> dict:
     city_lower = city.lower().strip()
-    # Exact match
     if city_lower in FBI_CITY_CRIME_2024:
         v, p = FBI_CITY_CRIME_2024[city_lower]
         score = crime_rates_to_score(v, p)
         return {"score": score, "source": "FBI_UCR_2024", "violent_per_100k": v, "property_per_100k": p}
-    # Partial match
     for key in FBI_CITY_CRIME_2024:
         if key in city_lower or city_lower in key:
             v, p = FBI_CITY_CRIME_2024[key]
             score = crime_rates_to_score(v, p)
             return {"score": score, "source": f"FBI_UCR_2024 (matched: {key})", "violent_per_100k": v, "property_per_100k": p}
-    # State fallback
-    fallback_score = STATE_CRIME_FALLBACK.get(state_abbr, STATE_CRIME_FALLBACK["default"])
+    fallback_score = STATE_CRIME_FALLBACK.get(
+        state_abbr, STATE_CRIME_FALLBACK["default"])
     return {"score": fallback_score, "source": f"state_avg_{state_abbr}", "violent_per_100k": None, "property_per_100k": None}
 
 
 # ── OVERPASS OSM ─────────────────────────────────────────
 OVERPASS_HEADERS = {
-    "User-Agent": "NeighborhoodTruthScore/3.2 (educational project; contact: student@university.edu)",
+    "User-Agent": "NeighborhoodTruthScore/3.3 (educational project; contact: student@university.edu)",
     "Content-Type": "application/x-www-form-urlencoded"
 }
 
-def overpass_count(query: str) -> int:
-    for url in ["https://overpass-api.de/api/interpreter", "https://lz4.overpass-api.de/api/interpreter"]:
+
+def get_osm_features(lat: float, lon: float) -> dict:
+    """One combined Overpass query for schools, parks, and traffic counts —
+    cuts 3 separate HTTP round trips down to 1."""
+    q = f"""[out:json][timeout:20];
+(
+  node["amenity"="school"](around:4000,{lat},{lon});
+  node["amenity"="college"](around:4000,{lat},{lon});
+  node["amenity"="university"](around:4000,{lat},{lon});
+  way["amenity"="school"](around:4000,{lat},{lon});
+  way["amenity"="college"](around:4000,{lat},{lon});
+);
+out count;
+(
+  node["leisure"="park"](around:4000,{lat},{lon});
+  node["leisure"="playground"](around:4000,{lat},{lon});
+  way["leisure"="park"](around:4000,{lat},{lon});
+  way["landuse"="recreation_ground"](around:4000,{lat},{lon});
+  way["leisure"="nature_reserve"](around:4000,{lat},{lon});
+);
+out count;
+(
+  way["highway"~"motorway|trunk|primary"](around:2500,{lat},{lon});
+);
+out count;"""
+
+    for url in ["https://lz4.overpass-api.de/api/interpreter", "https://overpass-api.de/api/interpreter"]:
         try:
-            r = requests.post(url, data={"data": query}, headers=OVERPASS_HEADERS, timeout=20)
+            r = requests.post(url, data={"data": q},
+                              headers=OVERPASS_HEADERS, timeout=20)
             if r.status_code == 200:
-                elements = r.json().get("elements", [])
-                for el in elements:
-                    if el.get("type") == "count":
-                        return int(el.get("tags", {}).get("total", 0))
+                counts = [
+                    int(el.get("tags", {}).get("total", 0))
+                    for el in r.json().get("elements", [])
+                    if el.get("type") == "count"
+                ]
+                if len(counts) == 3:
+                    schools_count, parks_count, traffic_count = counts
+                    return {
+                        "schools": {
+                            "score": int(min(95, max(20, 30 + schools_count * 5))),
+                            "source": "OpenStreetMap_real", "count": schools_count
+                        },
+                        "parks": {
+                            "score": int(min(95, max(20, 25 + parks_count * 4))),
+                            "source": "OpenStreetMap_real", "count": parks_count
+                        },
+                        "traffic": {
+                            "score": int(max(25, min(92, 90 - traffic_count * 5))),
+                            "source": "OpenStreetMap_real", "count": traffic_count
+                        },
+                    }
         except Exception as e:
             print(f"Overpass error: {e}")
-    return -1
 
-def get_schools_score(lat: float, lon: float) -> dict:
-    q = f"""[out:json][timeout:20];
-(
-  node["amenity"="school"](around:5000,{lat},{lon});
-  node["amenity"="college"](around:5000,{lat},{lon});
-  node["amenity"="university"](around:5000,{lat},{lon});
-  way["amenity"="school"](around:5000,{lat},{lon});
-  way["amenity"="college"](around:5000,{lat},{lon});
-);
-out count;"""
-    count = overpass_count(q)
-    if count < 0:
-        return {"score": 65, "source": "osm_error", "count": "unknown"}
-    score = min(95, max(20, 30 + count * 5))
-    return {"score": int(score), "source": "OpenStreetMap_real", "count": count}
-
-def get_parks_score(lat: float, lon: float) -> dict:
-    q = f"""[out:json][timeout:20];
-(
-  node["leisure"="park"](around:5000,{lat},{lon});
-  node["leisure"="playground"](around:5000,{lat},{lon});
-  way["leisure"="park"](around:5000,{lat},{lon});
-  way["landuse"="recreation_ground"](around:5000,{lat},{lon});
-  way["leisure"="nature_reserve"](around:5000,{lat},{lon});
-);
-out count;"""
-    count = overpass_count(q)
-    if count < 0:
-        return {"score": 65, "source": "osm_error", "count": "unknown"}
-    score = min(95, max(20, 25 + count * 4))
-    return {"score": int(score), "source": "OpenStreetMap_real", "count": count}
-
-def get_traffic_score(lat: float, lon: float) -> dict:
-    q = f"""[out:json][timeout:20];
-(
-  way["highway"~"motorway|trunk|primary"](around:3000,{lat},{lon});
-);
-out count;"""
-    count = overpass_count(q)
-    if count < 0:
-        return {"score": 60, "source": "osm_error", "count": "unknown"}
-    score = max(25, min(92, 90 - count * 5))
-    return {"score": int(score), "source": "OpenStreetMap_real", "count": count}
+    return {
+        "schools": {"score": 65, "source": "osm_error", "count": "unknown"},
+        "parks": {"score": 65, "source": "osm_error", "count": "unknown"},
+        "traffic": {"score": 60, "source": "osm_error", "count": "unknown"},
+    }
 
 
 # ── CENSUS ACS: LIVABILITY ────────────────────────────────
@@ -261,7 +267,8 @@ def get_census_livability(lat: float, lon: float) -> dict:
                     "vintage": "Current_Current", "format": "json", "layers": "Census Tracts"},
             timeout=10
         )
-        tracts = r.json().get("result", {}).get("geographies", {}).get("Census Tracts", [])
+        tracts = r.json().get("result", {}).get(
+            "geographies", {}).get("Census Tracts", [])
         if not tracts:
             return {"score": None, "source": "census_no_tract"}
 
@@ -286,8 +293,10 @@ def get_census_livability(lat: float, lon: float) -> dict:
         if income <= 0 and home_val <= 0:
             return {"score": None, "source": "census_zero"}
 
-        income_score = min(95, max(20, int((income / 150000) * 90))) if income > 0 else 60
-        home_score = min(95, max(20, int((home_val / 800000) * 90))) if home_val > 0 else 60
+        income_score = min(
+            95, max(20, int((income / 150000) * 90))) if income > 0 else 60
+        home_score = min(
+            95, max(20, int((home_val / 800000) * 90))) if home_val > 0 else 60
         score = int(income_score * 0.6 + home_score * 0.4)
 
         return {
@@ -306,7 +315,7 @@ def geocode_location(q: str):
     r = requests.get(
         "https://nominatim.openstreetmap.org/search",
         params={"q": q, "format": "json", "limit": 1, "countrycodes": "us"},
-        headers={"User-Agent": "NeighborhoodTruthScore/3.2"},
+        headers={"User-Agent": "NeighborhoodTruthScore/3.3"},
         timeout=10
     )
     data = r.json()
@@ -318,15 +327,26 @@ def geocode_location(q: str):
 # ── ENDPOINTS ─────────────────────────────────────────────
 @app.get("/")
 def root():
-    return {"message": "Neighborhood Truth Score API v3.2"}
+    return {"message": "Neighborhood Truth Score API v3.3"}
+
 
 @app.get("/health")
 def health():
-    return {"status": "healthy", "version": "3.2.0",
+    return {"status": "healthy", "version": "3.3.0",
             "sources": ["FBI UCR 2024", "OpenStreetMap Overpass", "US Census ACS 2022"]}
+
 
 @app.get("/api/search")
 def search_neighborhood(q: str = Query(...)):
+    cache_key = q.strip().lower()
+    now = time.time()
+
+    if cache_key in SEARCH_CACHE:
+        cached_result, cached_time = SEARCH_CACHE[cache_key]
+        if now - cached_time < CACHE_TTL_SECONDS:
+            print(f">>> Cache hit for '{q}'")
+            return cached_result
+
     location = geocode_location(q)
     display_name = location["display_name"]
     lat = float(location["lat"])
@@ -342,39 +362,45 @@ def search_neighborhood(q: str = Query(...)):
 
     print(f"\n>>> {city}, {state_abbr} | lat={lat}, lon={lon}")
 
-    crime    = get_crime_score(city, state_abbr)
-    schools  = get_schools_score(lat, lon)
-    parks    = get_parks_score(lat, lon)
-    traffic  = get_traffic_score(lat, lon)
-    census   = get_census_livability(lat, lon)
+    crime = get_crime_score(city, state_abbr)
+    osm = get_osm_features(lat, lon)
+    schools, parks, traffic = osm["schools"], osm["parks"], osm["traffic"]
+    census = get_census_livability(lat, lon)
 
-    crime_score      = crime["score"]
-    schools_score    = schools["score"]
-    parks_score      = parks["score"]
-    traffic_score    = traffic["score"]
+    crime_score = crime["score"]
+    schools_score = schools["score"]
+    parks_score = parks["score"]
+    traffic_score = traffic["score"]
     livability_score = census["score"] or 62
 
     print(f"  Crime:      {crime_score} | {crime['source']}")
-    print(f"  Schools:    {schools_score} | {schools['source']} | count={schools.get('count')}")
-    print(f"  Parks:      {parks_score} | {parks['source']} | count={parks.get('count')}")
-    print(f"  Traffic:    {traffic_score} | {traffic['source']} | count={traffic.get('count')}")
+    print(
+        f"  Schools:    {schools_score} | {schools['source']} | count={schools.get('count')}")
+    print(
+        f"  Parks:      {parks_score} | {parks['source']} | count={parks.get('count')}")
+    print(
+        f"  Traffic:    {traffic_score} | {traffic['source']} | count={traffic.get('count')}")
     print(f"  Livability: {livability_score} | {census['source']}")
 
     total = int(
-        crime_score      * 0.35 +
-        schools_score    * 0.20 +
+        crime_score * 0.35 +
+        schools_score * 0.20 +
         livability_score * 0.20 +
-        traffic_score    * 0.15 +
-        parks_score      * 0.10
+        traffic_score * 0.15 +
+        parks_score * 0.10
     )
     total = max(10, min(98, total))
     print(f"  TOTAL: {total}")
 
     def summary(city, total):
-        if total >= 85: return f"{city} is an excellent area — very low crime, great schools, high livability."
-        if total >= 75: return f"{city} is a safe, above-average area with good schools and low crime."
-        if total >= 60: return f"{city} has moderate safety and livability. Some strengths, some areas to consider."
-        if total >= 45: return f"{city} scores below average. Crime is higher than typical suburban areas."
+        if total >= 85:
+            return f"{city} is an excellent area — very low crime, great schools, high livability."
+        if total >= 75:
+            return f"{city} is a safe, above-average area with good schools and low crime."
+        if total >= 60:
+            return f"{city} has moderate safety and livability. Some strengths, some areas to consider."
+        if total >= 45:
+            return f"{city} scores below average. Crime is higher than typical suburban areas."
         return f"{city} has significant safety concerns with above-average crime rates."
 
     sources = {
@@ -385,11 +411,13 @@ def search_neighborhood(q: str = Query(...)):
         "livability": census["source"],
     }
     if crime.get("violent_per_100k"):
-        sources["crime_detail"] = f"Violent: {crime['violent_per_100k']}/100k | Property: {crime['property_per_100k']}/100k (FBI UCR 2024)"
+        sources[
+            "crime_detail"] = f"Violent: {crime['violent_per_100k']}/100k | Property: {crime['property_per_100k']}/100k (FBI UCR 2024)"
     if census.get("median_income"):
-        sources["livability_detail"] = f"Median income: ${census['median_income']:,} | Median home: ${census.get('median_home_value', 0):,}"
+        sources[
+            "livability_detail"] = f"Median income: ${census['median_income']:,} | Median home: ${census.get('median_home_value', 0):,}"
 
-    return {
+    result = {
         "query": q,
         "display_name": display_name,
         "lat": lat, "lon": lon,
@@ -404,3 +432,6 @@ def search_neighborhood(q: str = Query(...)):
         },
         "sources": sources
     }
+
+    SEARCH_CACHE[cache_key] = (result, now)
+    return result
