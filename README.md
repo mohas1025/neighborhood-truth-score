@@ -9,7 +9,6 @@ A full-stack public safety and livability dashboard that scores any US neighborh
 ---
 
 ## 🌐 Features
-
 - 🔍 Search any US address, city, or ZIP code
 - 📊 5-category scoring: Crime, Schools, Parks, Traffic, Livability
 - 🗺️ Interactive Leaflet.js map with real pin placement
@@ -24,9 +23,9 @@ A full-stack public safety and livability dashboard that scores any US neighborh
 | Category | Source | Type |
 |---|---|---|
 | 🔴 Crime | FBI Uniform Crime Report 2024 | Pre-loaded for 80+ US cities |
-| 🏫 Schools | GreatSchools + NCES quality ratings | Pre-loaded for 80+ US cities |
-| 🌳 Parks | OpenStreetMap Overpass API | ✅ Live API — real count within 5km |
-| 🚗 Traffic | OpenStreetMap Overpass API | ✅ Live API — major roads within 3km |
+| 🏫 Schools | OpenStreetMap Overpass API | ✅ Live API — school/college count within 4km |
+| 🌳 Parks | OpenStreetMap Overpass API | ✅ Live API — park count within 4km |
+| 🚗 Traffic | OpenStreetMap Overpass API | ✅ Live API — major roads within 2.5km |
 | 💰 Livability | US Census Bureau ACS 2022 | ✅ Live API — median income + home value per census tract |
 
 ---
@@ -44,7 +43,7 @@ A full-stack public safety and livability dashboard that scores any US neighborh
 ### Prerequisites
 - Node.js 18+
 - Python 3.10+
-- FBI API key — free at [api.data.gov](https://api.data.gov/signup/)
+- Census API key — free at [api.census.gov/data/key_signup.html](https://api.census.gov/data/key_signup.html)
 
 ### Backend
 ```bash
@@ -56,7 +55,7 @@ pip install -r requirements.txt
 
 Create `backend/.env`:
 ```
-FBI_API_KEY=your_key_here
+CENSUS_API_KEY=your_key_here
 ```
 
 ```bash
@@ -79,7 +78,7 @@ Open `http://localhost:5173`
 | Service | Platform | Notes |
 |---|---|---|
 | Frontend | Vercel | Auto-deploys on every push to main |
-| Backend | Railway | Auto-deploys on every push to main |
+| Backend | Render | Auto-deploys on every push to main; kept warm via scheduled GitHub Actions ping |
 
 ---
 
@@ -88,12 +87,20 @@ Open `http://localhost:5173`
 | Category | Weight | Source |
 |---|---|---|
 | Crime | 35% | FBI UCR 2024 — violent + property rates per 100k |
-| Schools | 20% | GreatSchools + NCES quality ratings |
+| Schools | 20% | OpenStreetMap — school/college count within 4km |
 | Livability | 20% | US Census median income + home value |
-| Traffic | 15% | OpenStreetMap — major road count within 3km |
-| Parks | 10% | OpenStreetMap — park count within 5km |
+| Traffic | 15% | OpenStreetMap — major road count within 2.5km |
+| Parks | 10% | OpenStreetMap — park count within 4km |
 
 🟢 Good (75+) · 🟡 Moderate (55–74) · 🔴 Concerning (below 55)
+
+---
+
+## ⚡ Performance
+
+- Search results are cached for 24 hours, so repeat searches return instantly
+- Top Orange County cities are pre-warmed in the cache on server startup
+- A scheduled GitHub Actions workflow pings the backend every 10 minutes to prevent cold starts on Render's free tier
 
 ---
 
