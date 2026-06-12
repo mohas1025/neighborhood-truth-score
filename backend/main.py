@@ -6,6 +6,7 @@ import os
 import time
 
 load_dotenv()
+CENSUS_API_KEY = os.getenv("CENSUS_API_KEY")
 
 app = FastAPI(title="Neighborhood Truth Score API", version="3.3.0")
 
@@ -279,6 +280,7 @@ def get_census_livability(lat: float, lon: float) -> dict:
                 "get": "B19013_001E,B25077_001E",
                 "for": f"tract:{t['TRACT']}",
                 "in": f"state:{t['STATE']} county:{t['COUNTY']}",
+                "key": CENSUS_API_KEY,
             },
             timeout=10
         )
