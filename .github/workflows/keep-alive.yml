@@ -1,0 +1,13 @@
+name: Keep Backend Warm
+
+on:
+  schedule:
+    - cron: '*/10 * * * *'
+  workflow_dispatch:
+
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Ping backend health endpoint
+        run: curl -s -o /dev/null -w "Status: %{http_code}\n" https://neighborhood-truth-score.onrender.com/health
