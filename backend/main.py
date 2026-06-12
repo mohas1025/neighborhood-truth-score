@@ -8,7 +8,7 @@ import time
 load_dotenv()
 CENSUS_API_KEY = os.getenv("CENSUS_API_KEY")
 
-app = FastAPI(title="Neighborhood Truth Score API", version="3.4.0")
+app = FastAPI(title="Neighborhood Truth Score API", version="3.5.0")
 
 app.add_middleware(
     CORSMiddleware,
@@ -53,6 +53,9 @@ FBI_CITY_CRIME_2024 = {
     "mission viejo":    (90,   950),
     "santa ana":        (380, 2100),
     "laguna beach":     (310, 1480),
+    "aliso viejo":      (85,  682),
+    "newport beach":    (252, 1873),
+    "costa mesa":       (738, 2837),
     "anaheim":          (310, 2100),
     "los angeles":      (627, 2200),
     "san francisco":    (640, 5900),
@@ -193,7 +196,7 @@ def get_crime_score(city: str, state_abbr: str) -> dict:
 
 # ── OVERPASS OSM ─────────────────────────────────────────
 OVERPASS_HEADERS = {
-    "User-Agent": "NeighborhoodTruthScore/3.4 (educational project; contact: student@university.edu)",
+    "User-Agent": "NeighborhoodTruthScore/3.5 (educational project; contact: student@university.edu)",
     "Content-Type": "application/x-www-form-urlencoded"
 }
 
@@ -237,7 +240,7 @@ out count;"""
                     schools_count, parks_count, traffic_count = counts
                     return {
                         "schools": {
-                            "score": int(min(95, max(20, 30 + schools_count * 5))),
+                            "score": int(min(95, max(25, 40 + schools_count * 7))),
                             "source": "OpenStreetMap_real", "count": schools_count
                         },
                         "parks": {
@@ -245,7 +248,7 @@ out count;"""
                             "source": "OpenStreetMap_real", "count": parks_count
                         },
                         "traffic": {
-                            "score": int(max(25, min(92, 90 - traffic_count * 5))),
+                            "score": int(max(30, min(95, 95 - traffic_count / 4))),
                             "source": "OpenStreetMap_real", "count": traffic_count
                         },
                     }
@@ -317,7 +320,7 @@ def geocode_location(q: str):
     r = requests.get(
         "https://nominatim.openstreetmap.org/search",
         params={"q": q, "format": "json", "limit": 1, "countrycodes": "us"},
-        headers={"User-Agent": "NeighborhoodTruthScore/3.4"},
+        headers={"User-Agent": "NeighborhoodTruthScore/3.5"},
         timeout=10
     )
     data = r.json()
@@ -329,12 +332,12 @@ def geocode_location(q: str):
 # ── ENDPOINTS ─────────────────────────────────────────────
 @app.get("/")
 def root():
-    return {"message": "Neighborhood Truth Score API v3.4"}
+    return {"message": "Neighborhood Truth Score API v3.5"}
 
 
 @app.get("/health")
 def health():
-    return {"status": "healthy", "version": "3.4.0",
+    return {"status": "healthy", "version": "3.5.0",
             "sources": ["FBI UCR 2024", "OpenStreetMap Overpass", "US Census ACS 2022"]}
 
 
