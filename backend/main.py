@@ -8,7 +8,7 @@ import time
 load_dotenv()
 CENSUS_API_KEY = os.getenv("CENSUS_API_KEY")
 
-app = FastAPI(title="Neighborhood Truth Score API", version="3.3.0")
+app = FastAPI(title="Neighborhood Truth Score API", version="3.4.0")
 
 app.add_middleware(
     CORSMiddleware,
@@ -193,7 +193,7 @@ def get_crime_score(city: str, state_abbr: str) -> dict:
 
 # ── OVERPASS OSM ─────────────────────────────────────────
 OVERPASS_HEADERS = {
-    "User-Agent": "NeighborhoodTruthScore/3.3 (educational project; contact: student@university.edu)",
+    "User-Agent": "NeighborhoodTruthScore/3.4 (educational project; contact: student@university.edu)",
     "Content-Type": "application/x-www-form-urlencoded"
 }
 
@@ -317,7 +317,7 @@ def geocode_location(q: str):
     r = requests.get(
         "https://nominatim.openstreetmap.org/search",
         params={"q": q, "format": "json", "limit": 1, "countrycodes": "us"},
-        headers={"User-Agent": "NeighborhoodTruthScore/3.3"},
+        headers={"User-Agent": "NeighborhoodTruthScore/3.4"},
         timeout=10
     )
     data = r.json()
@@ -329,30 +329,36 @@ def geocode_location(q: str):
 # ── ENDPOINTS ─────────────────────────────────────────────
 @app.get("/")
 def root():
-    return {"message": "Neighborhood Truth Score API v3.3"}
+    return {"message": "Neighborhood Truth Score API v3.4"}
 
 
 @app.get("/health")
 def health():
-    return {"status": "healthy", "version": "3.3.0",
+    return {"status": "healthy", "version": "3.4.0",
             "sources": ["FBI UCR 2024", "OpenStreetMap Overpass", "US Census ACS 2022"]}
 
 
 @app.get("/api/search")
 def search_neighborhood(q: str = Query(...)):
-    cache_key = q.strip().lower()
+    # Always geocode first — fast (~1-2s), and normalizes different
+    # phrasings/capitalizations of the same place to the same coordinates.
+    location = geocode_location(q)
+    display_name = location["display_name"]
+    lat = float(location["lat"])
+    lon = float(location["lon"])
+
+    # Cache by rounded location (not raw query string) so "Irvine",
+    # "irvine, ca", "Irvine, California" etc. all hit the same entry.
+    cache_key = f"{round(lat, 3)},{round(lon, 3)}"
     now = time.time()
 
     if cache_key in SEARCH_CACHE:
         cached_result, cached_time = SEARCH_CACHE[cache_key]
         if now - cached_time < CACHE_TTL_SECONDS:
-            print(f">>> Cache hit for '{q}'")
-            return cached_result
-
-    location = geocode_location(q)
-    display_name = location["display_name"]
-    lat = float(location["lat"])
-    lon = float(location["lon"])
+            print(f">>> Cache hit for '{q}' (location {cache_key})")
+            result = dict(cached_result)
+            result["query"] = q
+            return result
 
     parts = display_name.split(",")
     city = parts[0].strip()
