@@ -8,7 +8,7 @@ import time
 load_dotenv()
 CENSUS_API_KEY = os.getenv("CENSUS_API_KEY")
 
-app = FastAPI(title="Neighborhood Truth Score API", version="3.5.0")
+app = FastAPI(title="Neighborhood Truth Score API", version="3.6.0")
 
 app.add_middleware(
     CORSMiddleware,
@@ -42,9 +42,7 @@ STATE_MAP = {
     "West Virginia": "WV", "New Jersey": "NJ", "District of Columbia": "DC"
 }
 
-# ── REAL FBI UCR 2024 CRIME RATES ─────────────────────────
 FBI_CITY_CRIME_2024 = {
-    # California
     "irvine":           (74,   871),
     "laguna niguel":    (100,  990),
     "mission viejo":    (90,   950),
@@ -82,7 +80,6 @@ FBI_CITY_CRIME_2024 = {
     "modesto":          (620, 3800),
     "antioch":          (607, 3815),
     "berkeley":         (639, 5909),
-    # Texas
     "plano":            (150, 1400),
     "frisco":           (130, 1200),
     "allen":            (120, 1100),
@@ -94,11 +91,9 @@ FBI_CITY_CRIME_2024 = {
     "fort worth":       (560, 3400),
     "el paso":          (380, 2200),
     "arlington":        (430, 3100),
-    # New York
     "new york":         (580, 1500),
     "buffalo":          (1100, 4200),
     "yonkers":          (280, 1800),
-    # Florida
     "miami":            (700, 3800),
     "orlando":          (760, 4200),
     "tampa":            (620, 3600),
@@ -109,11 +104,9 @@ FBI_CITY_CRIME_2024 = {
     "boca raton":       (190, 1500),
     "coral springs":    (170, 1600),
     "weston":           (80,  900),
-    # Illinois
     "chicago":          (990, 3600),
     "naperville":       (130, 1300),
     "aurora":           (480, 2900),
-    # Arizona
     "scottsdale":       (200, 2200),
     "chandler":         (230, 2100),
     "gilbert":          (130, 1300),
@@ -122,34 +115,25 @@ FBI_CITY_CRIME_2024 = {
     "tucson":           (670, 4200),
     "mesa":             (380, 2900),
     "surprise":         (109,  992),
-    # Washington
     "seattle":          (830, 5100),
     "bellevue":         (200, 2400),
     "spokane":          (680, 4200),
     "tacoma":           (790, 4600),
-    # Colorado
     "denver":           (680, 4200),
     "colorado springs": (450, 3300),
     "fort collins":     (280, 2600),
     "boulder":          (290, 3100),
-    # North Carolina
     "charlotte":        (570, 3200),
     "raleigh":          (340, 2800),
     "cary":             (120, 1400),
-    # Virginia
     "virginia beach":   (240, 1900),
-    "arlington":        (180, 1500),
-    # Ohio
     "columbus":         (590, 3800),
     "cleveland":        (1300, 5200),
     "cincinnati":       (830, 4100),
-    # Michigan
     "detroit":          (2000, 5800),
     "ann arbor":        (250, 2600),
-    # New Jersey
     "newark":           (1100, 3200),
     "princeton":        (70,   800),
-    # Georgia
     "atlanta":          (1200, 5100),
     "johns creek":      (100, 1100),
     "alpharetta":       (130, 1400),
@@ -186,9 +170,8 @@ def get_crime_score(city: str, state_abbr: str) -> dict:
     return {"score": fallback_score, "source": f"state_avg_{state_abbr}", "violent_per_100k": None, "property_per_100k": None}
 
 
-# ── OVERPASS OSM ─────────────────────────────────────────
 OVERPASS_HEADERS = {
-    "User-Agent": "NeighborhoodTruthScore/3.5 (educational project; contact: student@university.edu)",
+    "User-Agent": "NeighborhoodTruthScore/3.6 (educational project; contact: student@university.edu)",
     "Content-Type": "application/x-www-form-urlencoded"
 }
 
@@ -229,30 +212,20 @@ out count;"""
                 if len(counts) == 3:
                     schools_count, parks_count, traffic_count = counts
                     return {
-                        "schools": {
-                            "score": int(min(95, max(25, 40 + schools_count * 7))),
-                            "source": "OpenStreetMap_real", "count": schools_count
-                        },
-                        "parks": {
-                            "score": int(min(95, max(20, 25 + parks_count * 4))),
-                            "source": "OpenStreetMap_real", "count": parks_count
-                        },
-                        "traffic": {
-                            "score": int(max(30, min(95, 95 - traffic_count / 4))),
-                            "source": "OpenStreetMap_real", "count": traffic_count
-                        },
+                        "schools": {"score": int(min(95, max(25, 40 + schools_count * 7))), "source": "OpenStreetMap_real", "count": schools_count},
+                        "parks":   {"score": int(min(95, max(20, 25 + parks_count * 4))),   "source": "OpenStreetMap_real", "count": parks_count},
+                        "traffic": {"score": int(max(30, min(95, 95 - traffic_count / 4))), "source": "OpenStreetMap_real", "count": traffic_count},
                     }
         except Exception as e:
             print(f"Overpass error: {e}")
 
     return {
         "schools": {"score": 65, "source": "osm_error", "count": "unknown"},
-        "parks": {"score": 65, "source": "osm_error", "count": "unknown"},
+        "parks":   {"score": 65, "source": "osm_error", "count": "unknown"},
         "traffic": {"score": 60, "source": "osm_error", "count": "unknown"},
     }
 
 
-# ── CENSUS ACS: LIVABILITY ────────────────────────────────
 def get_census_livability(lat: float, lon: float) -> dict:
     try:
         r = requests.get(
@@ -294,40 +267,59 @@ def get_census_livability(lat: float, lon: float) -> dict:
             95, max(20, int((home_val / 800000) * 90))) if home_val > 0 else 60
         score = int(income_score * 0.6 + home_score * 0.4)
 
-        return {
-            "score": score,
-            "source": "US_Census_ACS_2022",
-            "median_income": income,
-            "median_home_value": home_val
-        }
+        return {"score": score, "source": "US_Census_ACS_2022", "median_income": income, "median_home_value": home_val}
     except Exception as e:
         print(f"Census error: {e}")
         return {"score": None, "source": "census_error"}
 
 
-# ── GEOCODE ───────────────────────────────────────────────
+# ── GEOCODE with retry ────────────────────────────────────
 def geocode_location(q: str):
-    r = requests.get(
-        "https://nominatim.openstreetmap.org/search",
-        params={"q": q, "format": "json", "limit": 1, "countrycodes": "us"},
-        headers={"User-Agent": "NeighborhoodTruthScore/3.5"},
-        timeout=10
-    )
-    data = r.json()
-    if not data:
-        raise HTTPException(status_code=404, detail="Location not found")
-    return data[0]
+    headers = {
+        "User-Agent": "NeighborhoodTruthScore/3.6 (educational project)"}
+    params = {"q": q, "format": "json", "limit": 1, "countrycodes": "us"}
+
+    for attempt in range(3):  # retry up to 3 times
+        try:
+            r = requests.get(
+                "https://nominatim.openstreetmap.org/search",
+                params=params,
+                headers=headers,
+                timeout=10
+            )
+            # Check for non-200 or empty body before parsing JSON
+            if r.status_code != 200 or not r.text.strip():
+                print(
+                    f"Nominatim attempt {attempt+1} failed: status={r.status_code}, body empty={not r.text.strip()}")
+                time.sleep(1.5)
+                continue
+
+            data = r.json()
+            if data:
+                return data[0]
+
+            # Empty result — location genuinely not found
+            raise HTTPException(status_code=404, detail="Location not found")
+
+        except HTTPException:
+            raise
+        except Exception as e:
+            print(f"Nominatim attempt {attempt+1} error: {e}")
+            time.sleep(1.5)
+
+    raise HTTPException(
+        status_code=503, detail="Geocoding service unavailable. Please try again in a moment.")
 
 
 # ── ENDPOINTS ─────────────────────────────────────────────
 @app.get("/")
 def root():
-    return {"message": "Neighborhood Truth Score API v3.5"}
+    return {"message": "Neighborhood Truth Score API v3.6"}
 
 
 @app.get("/health")
 def health():
-    return {"status": "healthy", "version": "3.5.0",
+    return {"status": "healthy", "version": "3.6.0",
             "sources": ["FBI UCR 2024", "OpenStreetMap Overpass", "US Census ACS 2022"]}
 
 
@@ -344,28 +336,24 @@ def search_neighborhood(q: str = Query(...)):
     if cache_key in SEARCH_CACHE:
         cached_result, cached_time = SEARCH_CACHE[cache_key]
         if now - cached_time < CACHE_TTL_SECONDS:
-            print(f">>> Cache hit for '{q}' (location {cache_key})")
+            print(f">>> Cache hit for '{q}'")
             result = dict(cached_result)
             result["query"] = q
             return result
 
     parts = display_name.split(",")
 
-    # FIX 1: If first part is a ZIP code, skip it to get the real city name
+    # If first part is a ZIP code, use the next part as city name
     city = parts[0].strip()
     if city.isdigit() and len(parts) > 1:
         city = parts[1].strip()
 
-    # FIX 2: Don't hardcode CA — detect state from display_name
-    state_abbr = STATE_CRIME_FALLBACK.get("default") and "default"
-    state_abbr = "unknown"
+    # Detect state from display_name
+    state_abbr = "default"
     for part in parts:
-        part_clean = part.strip()
-        if part_clean in STATE_MAP:
-            state_abbr = STATE_MAP[part_clean]
+        if part.strip() in STATE_MAP:
+            state_abbr = STATE_MAP[part.strip()]
             break
-    if state_abbr == "unknown":
-        state_abbr = "default"
 
     print(f"\n>>> {city}, {state_abbr} | lat={lat}, lon={lon}")
 
@@ -379,15 +367,6 @@ def search_neighborhood(q: str = Query(...)):
     parks_score = parks["score"]
     traffic_score = traffic["score"]
     livability_score = census["score"] or 62
-
-    print(f"  Crime:      {crime_score} | {crime['source']}")
-    print(
-        f"  Schools:    {schools_score} | {schools['source']} | count={schools.get('count')}")
-    print(
-        f"  Parks:      {parks_score} | {parks['source']} | count={parks.get('count')}")
-    print(
-        f"  Traffic:    {traffic_score} | {traffic['source']} | count={traffic.get('count')}")
-    print(f"  Livability: {livability_score} | {census['source']}")
 
     total = int(
         crime_score * 0.35 +
@@ -443,31 +422,5 @@ def search_neighborhood(q: str = Query(...)):
     SEARCH_CACHE[cache_key] = (result, now)
     return result
 
-
-# ── PRE-WARM CACHE ON STARTUP ─────────────────────────────
-PREWARM_CITIES = [
-    "Laguna Beach, CA",
-    "Aliso Viejo, CA",
-    "Irvine, CA",
-    "Newport Beach, CA",
-    "Costa Mesa, CA",
-    "Mission Viejo, CA",
-    "Laguna Niguel, CA",
-]
-
-
-@app.on_event("startup")
-def prewarm_cache():
-    import threading
-
-    def warm():
-        for city in PREWARM_CITIES:
-            try:
-                print(f">>> Pre-warming cache for '{city}'")
-                search_neighborhood(q=city)
-                # FIX 3: Respect Nominatim's 1 req/sec rate limit
-                time.sleep(1.1)
-            except Exception as e:
-                print(f"Pre-warm error for '{city}': {e}")
-
-    threading.Thread(target=warm, daemon=True).start()
+# NOTE: Pre-warm removed — it was causing Nominatim rate limiting on every
+# Render restart, blocking ALL searches. Cities cache naturally after first search.
