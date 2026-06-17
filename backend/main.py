@@ -4,11 +4,12 @@ from dotenv import load_dotenv
 import requests
 import os
 import time
+from concurrent.futures import ThreadPoolExecutor, as_completed
 
 load_dotenv()
 CENSUS_API_KEY = os.getenv("CENSUS_API_KEY")
 
-app = FastAPI(title="Neighborhood Truth Score API", version="3.6.0")
+app = FastAPI(title="Neighborhood Truth Score API", version="3.7.0")
 
 app.add_middleware(
     CORSMiddleware,
@@ -171,7 +172,7 @@ def get_crime_score(city: str, state_abbr: str) -> dict:
 
 
 OVERPASS_HEADERS = {
-    "User-Agent": "NeighborhoodTruthScore/3.6 (educational project; contact: student@university.edu)",
+    "User-Agent": "NeighborhoodTruthScore/3.7 (educational project; contact: student@university.edu)",
     "Content-Type": "application/x-www-form-urlencoded"
 }
 
@@ -273,13 +274,13 @@ def get_census_livability(lat: float, lon: float) -> dict:
         return {"score": None, "source": "census_error"}
 
 
-# ── GEOCODE via Photon (replaces Nominatim which banned Render's IP) ──────────
+# ── GEOCODE via Photon ────────────────────────────────────
 def geocode_location(q: str):
     try:
         r = requests.get(
             "https://photon.komoot.io/api/",
             params={"q": q, "limit": 1, "countrycode": "us", "lang": "en"},
-            headers={"User-Agent": "NeighborhoodTruthScore/3.6"},
+            headers={"User-Agent": "NeighborhoodTruthScore/3.7"},
             timeout=10
         )
         if r.status_code != 200:
@@ -294,7 +295,6 @@ def geocode_location(q: str):
         props = feature.get("properties", {})
         coords = feature["geometry"]["coordinates"]  # [lon, lat]
 
-        # Build display_name from Photon properties
         city = props.get("city") or props.get(
             "name") or props.get("county") or q
         state = props.get("state", "")
@@ -317,12 +317,12 @@ def geocode_location(q: str):
 # ── ENDPOINTS ─────────────────────────────────────────────
 @app.get("/")
 def root():
-    return {"message": "Neighborhood Truth Score API v3.6"}
+    return {"message": "Neighborhood Truth Score API v3.7"}
 
 
 @app.get("/health")
 def health():
-    return {"status": "healthy", "version": "3.6.0",
+    return {"status": "healthy", "version": "3.7.0",
             "sources": ["FBI UCR 2024", "OpenStreetMap Overpass", "US Census ACS 2022"]}
 
 
@@ -345,13 +345,10 @@ def search_neighborhood(q: str = Query(...)):
             return result
 
     parts = display_name.split(",")
-
-    # If first part is a ZIP code, use the next part as city name
     city = parts[0].strip()
     if city.isdigit() and len(parts) > 1:
         city = parts[1].strip()
 
-    # Detect state from display_name
     state_abbr = "default"
     for part in parts:
         if part.strip() in STATE_MAP:
@@ -360,10 +357,17 @@ def search_neighborhood(q: str = Query(...)):
 
     print(f"\n>>> {city}, {state_abbr} | lat={lat}, lon={lon}")
 
+    # ── PARALLEL API CALLS ─────────────────────────────────
+    # Run Overpass + Census at the same time instead of sequentially
+    # Cuts wait time from ~30s down to ~10-15s (slowest single call wins)
+    with ThreadPoolExecutor(max_workers=2) as executor:
+        osm_future = executor.submit(get_osm_features, lat, lon)
+        census_future = executor.submit(get_census_livability, lat, lon)
+        osm = osm_future.result()
+        census = census_future.result()
+
     crime = get_crime_score(city, state_abbr)
-    osm = get_osm_features(lat, lon)
     schools, parks, traffic = osm["schools"], osm["parks"], osm["traffic"]
-    census = get_census_livability(lat, lon)
 
     crime_score = crime["score"]
     schools_score = schools["score"]
