@@ -273,42 +273,45 @@ def get_census_livability(lat: float, lon: float) -> dict:
         return {"score": None, "source": "census_error"}
 
 
-# ── GEOCODE with retry ────────────────────────────────────
+# ── GEOCODE via Photon (replaces Nominatim which banned Render's IP) ──────────
 def geocode_location(q: str):
-    headers = {
-        "User-Agent": "NeighborhoodTruthScore/3.6 (educational project)"}
-    params = {"q": q, "format": "json", "limit": 1, "countrycodes": "us"}
+    try:
+        r = requests.get(
+            "https://photon.komoot.io/api/",
+            params={"q": q, "limit": 1, "countrycode": "us", "lang": "en"},
+            headers={"User-Agent": "NeighborhoodTruthScore/3.6"},
+            timeout=10
+        )
+        if r.status_code != 200:
+            raise HTTPException(
+                status_code=503, detail="Geocoding service unavailable.")
 
-    for attempt in range(3):  # retry up to 3 times
-        try:
-            r = requests.get(
-                "https://nominatim.openstreetmap.org/search",
-                params=params,
-                headers=headers,
-                timeout=10
-            )
-            # Check for non-200 or empty body before parsing JSON
-            if r.status_code != 200 or not r.text.strip():
-                print(
-                    f"Nominatim attempt {attempt+1} failed: status={r.status_code}, body empty={not r.text.strip()}")
-                time.sleep(1.5)
-                continue
-
-            data = r.json()
-            if data:
-                return data[0]
-
-            # Empty result — location genuinely not found
+        features = r.json().get("features", [])
+        if not features:
             raise HTTPException(status_code=404, detail="Location not found")
 
-        except HTTPException:
-            raise
-        except Exception as e:
-            print(f"Nominatim attempt {attempt+1} error: {e}")
-            time.sleep(1.5)
+        feature = features[0]
+        props = feature.get("properties", {})
+        coords = feature["geometry"]["coordinates"]  # [lon, lat]
 
-    raise HTTPException(
-        status_code=503, detail="Geocoding service unavailable. Please try again in a moment.")
+        # Build display_name from Photon properties
+        city = props.get("city") or props.get(
+            "name") or props.get("county") or q
+        state = props.get("state", "")
+        display_name = f"{city}, {state}, United States"
+
+        return {
+            "lat": str(coords[1]),
+            "lon": str(coords[0]),
+            "display_name": display_name,
+        }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"Geocoding error: {e}")
+        raise HTTPException(
+            status_code=503, detail="Geocoding service unavailable.")
 
 
 # ── ENDPOINTS ─────────────────────────────────────────────
@@ -421,6 +424,3 @@ def search_neighborhood(q: str = Query(...)):
 
     SEARCH_CACHE[cache_key] = (result, now)
     return result
-
-# NOTE: Pre-warm removed — it was causing Nominatim rate limiting on every
-# Render restart, blocking ALL searches. Cities cache naturally after first search.
