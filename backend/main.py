@@ -43,9 +43,6 @@ STATE_MAP = {
 }
 
 # ── REAL FBI UCR 2024 CRIME RATES ─────────────────────────
-# Source: FBI Uniform Crime Reporting 2024 (via Wikipedia/CDE)
-# Format: violent_per_100k, property_per_100k
-# National avg: ~380 violent, ~2000 property per 100k
 FBI_CITY_CRIME_2024 = {
     # California
     "irvine":           (74,   871),
@@ -160,16 +157,11 @@ FBI_CITY_CRIME_2024 = {
 
 
 def crime_rates_to_score(violent_per_100k: float, property_per_100k: float) -> int:
-    """
-    Convert real FBI crime rates to 0-100 safety score.
-    National averages 2024: ~380 violent, ~2000 property per 100k.
-    """
     violent_score = max(10, min(100, 100 - (violent_per_100k / 14)))
     property_score = max(10, min(100, 100 - (property_per_100k / 83)))
     return int(violent_score * 0.65 + property_score * 0.35)
 
 
-# State-level fallback crime scores
 STATE_CRIME_FALLBACK = {
     "CA": 62, "TX": 60, "NY": 58, "FL": 58, "IL": 56,
     "WA": 58, "CO": 60, "GA": 55, "NC": 62, "VA": 65,
@@ -202,8 +194,6 @@ OVERPASS_HEADERS = {
 
 
 def get_osm_features(lat: float, lon: float) -> dict:
-    """One combined Overpass query for schools, parks, and traffic counts —
-    cuts 3 separate HTTP round trips down to 1."""
     q = f"""[out:json][timeout:20];
 (
   node["amenity"="school"](around:4000,{lat},{lon});
@@ -343,15 +333,11 @@ def health():
 
 @app.get("/api/search")
 def search_neighborhood(q: str = Query(...)):
-    # Always geocode first — fast (~1-2s), and normalizes different
-    # phrasings/capitalizations of the same place to the same coordinates.
     location = geocode_location(q)
     display_name = location["display_name"]
     lat = float(location["lat"])
     lon = float(location["lon"])
 
-    # Cache by rounded location (not raw query string) so "Irvine",
-    # "irvine, ca", "Irvine, California" etc. all hit the same entry.
     cache_key = f"{round(lat, 3)},{round(lon, 3)}"
     now = time.time()
 
@@ -364,12 +350,22 @@ def search_neighborhood(q: str = Query(...)):
             return result
 
     parts = display_name.split(",")
+
+    # FIX 1: If first part is a ZIP code, skip it to get the real city name
     city = parts[0].strip()
-    state_abbr = "CA"
+    if city.isdigit() and len(parts) > 1:
+        city = parts[1].strip()
+
+    # FIX 2: Don't hardcode CA — detect state from display_name
+    state_abbr = STATE_CRIME_FALLBACK.get("default") and "default"
+    state_abbr = "unknown"
     for part in parts:
-        if part.strip() in STATE_MAP:
-            state_abbr = STATE_MAP[part.strip()]
+        part_clean = part.strip()
+        if part_clean in STATE_MAP:
+            state_abbr = STATE_MAP[part_clean]
             break
+    if state_abbr == "unknown":
+        state_abbr = "default"
 
     print(f"\n>>> {city}, {state_abbr} | lat={lat}, lon={lon}")
 
@@ -469,6 +465,8 @@ def prewarm_cache():
             try:
                 print(f">>> Pre-warming cache for '{city}'")
                 search_neighborhood(q=city)
+                # FIX 3: Respect Nominatim's 1 req/sec rate limit
+                time.sleep(1.1)
             except Exception as e:
                 print(f"Pre-warm error for '{city}': {e}")
 
